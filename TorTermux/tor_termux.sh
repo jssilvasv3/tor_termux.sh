@@ -1,38 +1,40 @@
-#!/data/data/com.termux/files/usr/bin/bash
+#!/bin/bash
 
-# Atualizando pacotes
+# Atualizando os repositórios do Termux
 echo "[*] Atualizando repositórios..."
 pkg update -y && pkg upgrade -y
 
 # Instalando o Tor
-echo "[*] Instalando o Tor..."
+echo "[*] Instalando Tor..."
 pkg install tor -y
 
-# Criando diretório de configuração do Tor, se não existir
-TOR_DIR="$HOME/.tor"
-if [ ! -d "$TOR_DIR" ]; then
-    mkdir -p "$TOR_DIR"
-fi
+# Criando diretório de configuração se não existir
+TOR_CONF_DIR="$HOME/.tor"
+mkdir -p "$TOR_CONF_DIR"
 
-# Criando um arquivo de configuração padrão, se não existir
-TORRC_FILE="$TOR_DIR/torrc"
-if [ ! -f "$TORRC_FILE" ]; then
-    echo "SocksPort 9050" > "$TORRC_FILE"
-    echo "ControlPort 9051" >> "$TORRC_FILE"
-    echo "Log notice stdout" >> "$TORRC_FILE"
+# Criando arquivo de configuração padrão, se não existir
+TORRC="$TOR_CONF_DIR/torrc"
+if [ ! -f "$TORRC" ]; then
+    echo "[*] Criando arquivo de configuração..."
+    cat > "$TORRC" <<EOL
+SocksPort 9050
+ControlPort 9051
+DataDirectory $TOR_CONF_DIR/data
+EOL
 fi
 
 # Iniciando o Tor
 echo "[*] Iniciando o serviço Tor..."
-tor -f "$TORRC_FILE" &
+tor -f "$TORRC" &
 
-sleep 5
+# Aguardando o Tor inicializar
+echo "[*] Aguardando inicialização do Tor..."
+sleep 10
 
-# Verificando se o Tor iniciou corretamente
+# Verificando se o Tor está rodando
 if pgrep -x "tor" > /dev/null; then
-    echo "[✔] Tor está rodando com sucesso!"
+    echo "[✔] Tor iniciado com sucesso!"
 else
     echo "[✘] Falha ao iniciar o Tor. Verifique sua conexão ou tente novamente."
 fi
-
 
