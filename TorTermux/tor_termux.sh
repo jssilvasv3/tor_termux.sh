@@ -1,76 +1,129 @@
 #!/data/data/com.termux/files/usr/bin/bash
 
-# Cores
+# ==============================================
+# INSTALADOR TOR PARA TERMUX - VERSÃO OTIMIZADA
+# ==============================================
+
+# Cores melhoradas (visíveis em todos os terminais)
 RED='\e[91m'
 GREEN='\e[92m'
+YELLOW='\e[93m'
+BLUE='\e[94m'
 NC='\e[0m'
 
-# Resolver conflitos de pacotes
-fix_packages() {
-    echo -e "${GREEN}[*]${NC} Resolvendo conflitos de pacotes..."
-    pkg install -o Dpkg::Options::="--force-confold" -y bash --reinstall
-    pkg install -y termux-tools
-    dpkg --configure -a
+# Funções de mensagem robustas
+error() { echo -e "${RED}[✘]${NC} $1" >&2; exit 1; }
+success() { echo -e "${GREEN}[✔]${NC} $1"; }
+info() { echo -e "${BLUE}[*]${NC} $1"; }
+warning() { echo -e "${YELLOW}[!]${NC} $1"; }
+
+# Verificação completa do ambiente Termux
+verify_environment() {
+    if ! command -v termux-setup-storage >/dev/null 2>&1; then
+        error "Este script requer Termux (Android)"
+    fi
+    if [ ! -d "$PREFIX" ]; then
+        error "Diretório do Termux não encontrado"
+    fi
 }
 
-# Instalação limpa do Tor
-install_tor() {
-    echo -e "${GREEN}[*]${NC} Instalando Tor..."
-    pkg purge tor torsocks -y
-    rm -rf ~/.tor
-    pkg install -y tor torsocks
+# Instalação com tratamento de erros aprimorado
+install_packages() {
+    info "Atualizando repositórios..."
+    pkg update -y || error "Falha ao atualizar pacotes"
+    info "Instalando pacotes essenciais..."
+    for pkg in tor torsocks curl; do
+        if ! command -v $pkg >/dev/null 2>&1; then
+            pkg install -y $pkg || error "Falha ao instalar $pkg"
+        fi
+    done
+}
+
+# Configuração avançada do Tor
+configure_tor() {
+    TOR_DIR="$HOME/.tor"
+    mkdir -p "$TOR_DIR" || error "Falha ao criar $TOR_DIR"
     
-    mkdir -p ~/.tor
-    cat > ~/.tor/torrc <<'EOF'
+    info "Criando configuração personalizada..."
+    cat > "$TOR_DIR/torrc" <<'EOF'
 SocksPort 127.0.0.1:9050
-ControlPort 9051
+ControlPort 127.0.0.1:9051
+CookieAuthentication 1
 AvoidDiskWrites 1
 ClientOnly 1
-UseBridges 1
-Bridge obfs4 193.11.166.194:27025 1F2F0FF7CDAE026A4E0F5E5C6D86910F3B2D5B7D
-GeoIPExcludeUnknown 1
-Log notice stdout
+UseBridges 0
+ConnectionPadding 1
+CircuitBuildTimeout 60
+KeepalivePeriod 60
+Log notice file /data/data/com.termux/files/home/.tor/tor.log
+VirtualAddrNetworkIPv4 10.192.0.0/10
+AutomapHostsOnResolve 1
+DNSPort 5353
 EOF
 }
 
-# Inicialização com verificação
-start_tor() {
-    echo -e "${GREEN}[*]${NC} Iniciando Tor..."
-    pkill tor
-    tor -f ~/.tor/torrc > ~/.tor/tor.log 2>&1 &
+# Controle de serviço melhorado
+manage_tor_service() {
+    info "Gerenciando serviço Tor..."
+    termux-wake-lock
     
-    for i in {1..30}; do
-        if grep -q "Bootstrapped 100%" ~/.tor/tor.log 2>/dev/null; then
-            echo -e "${GREEN}[✔]${NC} Tor iniciado com sucesso!"
-            torsocks curl -s https://check.torproject.org | grep -q "Congratulations" && \
-            echo -e "${GREEN}[✔]${NC} Conexão verificada!" || \
-            echo -e "${RED}[!]${NC} Conexão ativa mas verificação falhou"
+    if pgrep -x "tor" >/dev/null; then
+        warning "Tor já em execução - reiniciando..."
+        pkill tor && sleep 2
+    fi
+    nohup tor -f "$TOR_DIR/torrc" > "$TOR_DIR/tor.log" 2>&1 &
+    
+    local timeout=30
+    local start_time=$(date +%s)
+    while ! grep -q "Bootstrapped 100%" "$TOR_DIR/tor.log" 2>/dev/null; do
+        sleep 1
+        if [ $(($(date +%s) - start_time)) -gt $timeout ]; then
+            error "Timeout na inicialização do Tor"
+            tail -n 10 "$TOR_DIR/tor.log" >&2
+            exit 1
+        fi
+    done
+}
+
+# Verificação de conexão completa
+verify_connection() {
+    info "Verificando conexão Tor..."
+    for ((i=1; i<=3; i++)); do
+        if torsocks curl -s --connect-timeout 20 https://check.torproject.org/api/ip | grep -q '"IsTor":true'; then
+            local tor_ip=$(torsocks curl -s https://check.torproject.org/api/ip | grep -oP '(?<="Ip":")[^"]+')
+            success "Conexão Tor estabelecida! IP: $tor_ip"
             return 0
         fi
-        sleep 2
+        warning "Tentativa $i/3 falhou - tentando novamente..."
+        sleep 5
     done
-    
-    echo -e "${RED}[✘]${NC} Falha na inicialização"
-    echo "Últimas linhas do log:"
-    tail -n 10 ~/.tor/tor.log
-    return 1
+    error "Falha ao verificar conexão Tor"
+}
+
+# Menu interativo melhorado
+show_menu() {
+    echo -e "\n${GREEN}=== CONTROLE DO TOR ==="
+    echo -e "${YELLOW}1.${NC} Verificar status: tail -f ~/.tor/tor.log"
+    echo -e "${YELLOW}2.${NC} Testar conexão: torsocks curl https://check.torproject.org"
+    echo -e "${YELLOW}3.${NC} Parar Tor: pkill tor"
+    echo -e "${YELLOW}4.${NC} Reiniciar Tor: pkill tor && tor -f ~/.tor/torrc"
+    echo -e "${YELLOW}5.${NC} Desinstalar Tor: pkg remove tor -y"
+    echo -e "${GREEN}======================${NC}"
 }
 
 # Fluxo principal
-fix_packages
-install_tor
-if start_tor; then
-    echo -e "\n${GREEN}Instalação concluída com sucesso!${NC}"
-    echo "Use: torsocks antes de comandos"
-else
-    echo -e "\n${RED}Problemas detectados.${NC} Tente:"
-    echo "1. Mudar de rede (WiFi/dados)"
-    echo "2. Usar outra bridge:"
-    echo "   nano ~/.tor/torrc"
-    echo "   Mude para: Bridge obfs4 154.35.22.11:443 FB70B257C162BF1038CA669D568D76F5B7F0BABB"
-fi
-    echo "3. Reiniciar: pkill tor && tor"
+main() {
+    clear
+    echo -e "${BLUE}=== INSTALADOR TOR PARA TERMUX ===${NC}"
+    verify_environment
+    install_packages
+    configure_tor
+    manage_tor_service
+    verify_connection
+    show_menu
+    success "Instalação concluída em $(date +'%T')"
 }
 
 # Execução
-main
+eval "$(basename "$0")" == "bash" && main || chmod +x "$0" && main
+
