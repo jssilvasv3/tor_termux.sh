@@ -21,14 +21,25 @@ read -p "[?] Deseja iniciar o Tor agora? (s/n): " resposta
 
 if [[ "$resposta" =~ ^[sS]$ ]]; then
     echo "[*] Iniciando o Tor..."
-    tor -f $HOME/.tor/torrc | while read line; do
-        echo "$line"
-        if echo "$line" | grep -q "Bootstrapped 100%"; then
-            echo "[*] Conexão Pronta!"
-            echo "[*] Você pode iniciar o Tor depois digitando: tor"
-            echo "[*] Para encerrar, pressione Ctrl + C"
-            break  # Para evitar a repetição da mensagem
-        fi
+    
+    # Inicia o Tor em background e salva o PID
+    tor -f $HOME/.tor/torrc > tor.log 2>&1 &  
+    TOR_PID=$!
+
+    echo "[*] Aguardando conexão..."
+    
+    # Monitorando o arquivo de log para verificar quando a conexão estiver pronta
+    while ! grep -q "Bootstrapped 100%" tor.log; do
+        sleep 2
     done
+
+    echo "[*] Conexão Pronta!"
+    echo "[*] Você pode iniciar o Tor depois digitando: tor"
+    echo "[*] Para encerrar, pressione Ctrl + C"
+    
+    # Mantém o Tor rodando em primeiro plano
+    wait $TOR_PID
+else
+    echo "[*] Você pode iniciar o Tor depois digitando: tor -f $HOME/.tor/torrc"
 fi
 
