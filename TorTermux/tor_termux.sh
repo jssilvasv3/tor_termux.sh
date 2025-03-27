@@ -1,126 +1,74 @@
 #!/data/data/com.termux/files/usr/bin/bash
 
-# ==============================================
-# INSTALADOR TOR PARA TERMUX - VERSÃO DEFINITIVA
-# ==============================================
-
-# Cores melhoradas
+# Cores
 RED='\e[91m'
 GREEN='\e[92m'
-YELLOW='\e[93m'
-BLUE='\e[94m'
 NC='\e[0m'
 
-# Funções de mensagem
-error() { echo -e "${RED}[✘]${NC} $1" >&2; exit 1; }
-success() { echo -e "${GREEN}[✔]${NC} $1"; }
-info() { echo -e "${BLUE}[*]${NC} $1"; }
-warning() { echo -e "${YELLOW}[!]${NC} $1"; }
-
-# Verificação de ambiente
-verify_env() {
-    [ -d "$PREFIX" ] || error "Termux não detectado!"
-    [ $(uname -o) = "Android" ] || warning "Recomendado executar no Android"
+# Resolver conflitos de pacotes
+fix_packages() {
+    echo -e "${GREEN}[*]${NC} Resolvendo conflitos de pacotes..."
+    pkg install -o Dpkg::Options::="--force-confold" -y bash --reinstall
+    pkg install -y termux-tools
+    dpkg --configure -a
 }
 
-# Configuração especial para Android
-android_config() {
-    info "Aplicando otimizações para Android..."
+# Instalação limpa do Tor
+install_tor() {
+    echo -e "${GREEN}[*]${NC} Instalando Tor..."
+    pkg purge tor torsocks -y
+    rm -rf ~/.tor
+    pkg install -y tor torsocks
     
-    # Configurações de rede específicas
-    cat > $HOME/.tor/torrc <<'EOF'
+    mkdir -p ~/.tor
+    cat > ~/.tor/torrc <<'EOF'
 SocksPort 127.0.0.1:9050
 ControlPort 9051
 AvoidDiskWrites 1
 ClientOnly 1
-UseBridges 0
-ConnectionPadding 1
-CircuitBuildTimeout 120
-KeepalivePeriod 30
-NumEntryGuards 2
+UseBridges 1
+Bridge obfs4 193.11.166.194:27025 1F2F0FF7CDAE026A4E0F5E5C6D86910F3B2D5B7D
 GeoIPExcludeUnknown 1
 Log notice stdout
 EOF
-
-    # Configurações adicionais se necessário
-    echo -e "\nVirtualAddrNetworkIPv4 10.192.0.0/10" >> $HOME/.tor/torrc
 }
 
-# Inicialização robusta do Tor
+# Inicialização com verificação
 start_tor() {
-    info "Iniciando Tor com configuração especial..."
+    echo -e "${GREEN}[*]${NC} Iniciando Tor..."
+    pkill tor
+    tor -f ~/.tor/torrc > ~/.tor/tor.log 2>&1 &
     
-    # Limpa processos anteriores
-    pkill tor 2>/dev/null && sleep 2
-    
-    # Inicia em primeiro plano temporariamente
-    tor -f $HOME/.tor/torrc > $HOME/.tor/tor.log 2>&1 &
-    local tor_pid=$!
-    
-    # Espera adaptativa
-    for i in {1..60}; do
-        if grep -q "Bootstrapped 100%" $HOME/.tor/tor.log 2>/dev/null; then
-            success "Tor iniciado com sucesso (PID: $tor_pid)"
+    for i in {1..30}; do
+        if grep -q "Bootstrapped 100%" ~/.tor/tor.log 2>/dev/null; then
+            echo -e "${GREEN}[✔]${NC} Tor iniciado com sucesso!"
+            torsocks curl -s https://check.torproject.org | grep -q "Congratulations" && \
+            echo -e "${GREEN}[✔]${NC} Conexão verificada!" || \
+            echo -e "${RED}[!]${NC} Conexão ativa mas verificação falhou"
             return 0
         fi
-        sleep 1
+        sleep 2
     done
     
-    error "Timeout na inicialização"
-    warning "Últimas linhas do log:"
-    tail -n 10 $HOME/.tor/tor.log >&2
-    
-    # Tentativa alternativa
-    warning "Tentando método alternativo..."
-    pkill tor
-    tor --allow-missing-torrc > $HOME/.tor/tor.log 2>&1 &
-    
-    sleep 10
-    if pgrep -x "tor" >/dev/null; then
-        success "Tor iniciado (método alternativo)"
-    else
-        error "Falha persistente"
-        echo "Relatório completo em: $HOME/.tor/tor.log"
-        exit 1
-    fi
+    echo -e "${RED}[✘]${NC} Falha na inicialização"
+    echo "Últimas linhas do log:"
+    tail -n 10 ~/.tor/tor.log
+    return 1
 }
 
 # Fluxo principal
-main() {
-    clear
-    echo -e "${BLUE}=== INSTALADOR TOR ULTRA-RESISTENTE ===${NC}"
-    
-    verify_env
-    
-    # Atualização segura
-    info "Atualizando pacotes..."
-    pkg update -y && pkg upgrade -y
-    
-    # Instalação essencial
-    info "Instalando componentes..."
-    pkg install -y tor torsocks curl
-    
-    # Configuração
-    mkdir -p $HOME/.tor
-    android_config
-    
-    # Inicialização
-    start_tor
-    
-    # Verificação final
-    info "Verificando conexão..."
-    if torsocks curl -s https://check.torproject.org | grep -q "Congratulations"; then
-        success "CONEXÃO TOR ESTABELECIDA!"
-        echo -e "${GREEN}IP TOR:${NC} $(torsocks curl -s https://check.torproject.org/api/ip | grep -oP '(?<="Ip":")[^"]+')"
-    else
-        warning "Conexão não verificada automaticamente"
-        echo "Execute manualmente para testar:"
-        echo "torsocks curl https://check.torproject.org"
-    fi
-    
-    echo -e "\n${GREEN}COMANDOS ÚTEIS:${NC}"
-    echo "1. Ver logs: tail -f $HOME/.tor/tor.log"
-    echo "2. Parar Tor: pkill tor"
+fix_packages
+install_tor
+if start_tor; then
+    echo -e "\n${GREEN}Instalação concluída com sucesso!${NC}"
+    echo "Use: torsocks antes de comandos"
+else
+    echo -e "\n${RED}Problemas detectados.${NC} Tente:"
+    echo "1. Mudar de rede (WiFi/dados)"
+    echo "2. Usar outra bridge:"
+    echo "   nano ~/.tor/torrc"
+    echo "   Mude para: Bridge obfs4 154.35.22.11:443 FB70B257C162BF1038CA669D568D76F5B7F0BABB"
+fi
     echo "3. Reiniciar: pkill tor && tor"
 }
 
