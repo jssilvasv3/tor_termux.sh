@@ -1,29 +1,38 @@
 #!/data/data/com.termux/files/usr/bin/bash
 
-# Atualizando repositórios
-echo "[*] Atualizando repositórios..."
-pkg update -y && pkg upgrade -y
+echo "[*] Atualizando pacotes do Termux..."
+pkg update -y
+pkg upgrade -y
 
-# Instalando pacotes essenciais
-echo "[*] Instalando pacotes essenciais..."
+echo "[*] Instalando o Tor..."
 pkg install -y tor
 
-# Aceitando alterações no bash.bashrc automaticamente (resposta padrão N)
-echo "[*] Aceitando alterações no bash.bashrc..."
-dpkg-reconfigure bash
+echo "[*] Instalando pacotes adicionais (dependências)..."
+pkg install -y coreutils
 
-# Iniciando o Tor
-echo "[*] Iniciando Tor..."
+# Criar a pasta de configuração do Tor, caso não exista
+mkdir -p ~/.tor
+
+# Configuração simples para torrc (torrc básico para a execução padrão)
+echo "
+SocksPort 9050
+ControlPort 9051
+DataDirectory ~/.tor
+" > ~/.tor/torrc
+
+# Iniciar o Tor
+echo "[*] Iniciando o Tor..."
 tor &
+echo "[*] Tor foi iniciado com sucesso!"
 
-# Verificando se o Tor foi iniciado corretamente
-echo "[*] Verificando o status do Tor..."
-if ps aux | grep '[t]or' > /dev/null
-then
-    echo "[*] Tor iniciado com sucesso!"
+# Verificar o status do Tor
+sleep 5
+if ps aux | grep "[t]or" > /dev/null; then
+    echo "[*] Tor está rodando corretamente!"
 else
     echo "[!] Falha ao iniciar o Tor."
 fi
+
 
 # Finalizando
 echo "[*] Processo concluído."
