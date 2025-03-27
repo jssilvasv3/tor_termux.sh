@@ -1,7 +1,7 @@
 #!/data/data/com.termux/files/usr/bin/bash
 
 echo "[*] Atualizando pacotes..."
-pkg update -y && pkg upgrade -y
+yes | pkg update -y && yes | pkg upgrade -y
 
 echo "[*] Instalando dependências..."
 pkg install tor -y
@@ -18,5 +18,4 @@ EOF
 
 echo "[*] Configuração concluída! Para iniciar o Tor, execute:"
 echo "tor -f $HOME/.tor/torrc"
-
 
