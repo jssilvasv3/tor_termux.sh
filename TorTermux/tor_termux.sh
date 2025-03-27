@@ -1,6 +1,5 @@
 #!/data/data/com.termux/files/usr/bin/bash
 
-
 echo "[*] Atualizando pacotes..."
 yes | pkg update -y && yes | pkg upgrade -y
 
@@ -32,3 +31,4 @@ if [[ "$resposta" =~ ^[sS]$ ]]; then
         fi
     done
 fi
+
