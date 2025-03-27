@@ -35,8 +35,8 @@ configure_tor() {
     mkdir -p "$TOR_DIR" || erro "Falha ao criar $TOR_DIR"
     
     cat > "$TOR_DIR/torrc" <<'EOF'
-SocksPort 127.0.0.1:9050
-ControlPort 127.0.0.1:9051
+SocksPort 127.0.0.1:9052
+ControlPort 127.0.0.1:9053
 CookieAuthentication 1
 AvoidDiskWrites 1
 ClientOnly 1
